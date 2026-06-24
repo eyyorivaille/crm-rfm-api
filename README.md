@@ -19,19 +19,35 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
 
 Şema tanımı: [`sql/schema.sql`](sql/schema.sql). RFM hesaplama sorgusu: [`sql/rfm_scoring.sql`](sql/rfm_scoring.sql).
 
-## Kurulum — Docker Compose (önerilen)
+## Kurulum — Docker Compose (önerilen, başka bir bilgisayarda çalıştırmak için)
 
-Tek komutla FastAPI + PostgreSQL ayağa kalkar:
-
-```
-docker compose up -d
-```
-
-- API: http://localhost:8000 (Swagger: http://localhost:8000/docs)
-- PostgreSQL container'ı ilk açılışta `sql/schema.sql`'i otomatik çalıştırır, tablolar hazır gelir.
-- Bu, **boş bir şema** ile başlar; gerçek Online Retail II verisini yüklemek için aşağıdaki "Veri yükleme" adımını host makinede `DB_HOST=localhost` ile çalıştırman gerekir (ya da `load_data.py`'yi container'a kopyalayıp çalıştırabilirsin).
-- Ortam değişkenleri proje kökündeki `.env` dosyasından okunur (aşağıdaki formatta).
-- Durdurmak için: `docker compose down` (veriyi de silmek istersen `-v` ekle).
+1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) kurulu ve açık olmalı (sistem tepsisinde "Engine running" görünmeli).
+2. Repoyu klonla:
+   ```
+   git clone https://github.com/eyyorivaille/crm-rfm-api.git
+   cd crm-rfm-api
+   ```
+3. `.env.example`'ı kopyalayıp kendi `.env`'ini oluştur (şifreyi istediğin gibi değiştirebilirsin, bu sadece kendi local Docker container'ının şifresi):
+   ```
+   cp .env.example .env
+   ```
+4. Tek komutla API + PostgreSQL'i ayağa kaldır:
+   ```
+   docker compose up -d --build
+   ```
+   - PostgreSQL container'ı ilk açılışta `sql/schema.sql`'i otomatik çalıştırır, tablolar hazır gelir.
+   - API: http://localhost:8000 (Swagger: http://localhost:8000/docs)
+5. Bu noktada veritabanı **boş** (sadece tablolar var). Gerçek Online Retail II verisini yüklemek için:
+   - "Online Retail II" veri setini Kaggle'dan indir, proje kökündeki `data/online_retail_II.xlsx` olarak kaydet (bu klasör `docker-compose.yml` ile `api` container'ına otomatik mount edilir).
+   - Container içinde yükleme scriptini çalıştır:
+     ```
+     docker compose exec api python load_data.py
+     ```
+   - RFM skorlarını hesapla:
+     ```
+     curl -X POST http://localhost:8000/rfm/recalculate
+     ```
+6. Durdurmak için: `docker compose down` (veritabanı verisi `pgdata` volume'unda kalıcı kalır, silmek istersen `-v` ekle).
 
 ## Kurulum — Local (Docker'sız)
 

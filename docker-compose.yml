@@ -26,6 +26,8 @@ services:
       DB_NAME: ${DB_NAME}
     ports:
       - "8000:8000"
+    volumes:
+      - ./data:/app/data:ro
     depends_on:
       db:
         condition: service_healthy
