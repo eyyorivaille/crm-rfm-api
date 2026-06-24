@@ -37,4 +37,5 @@ SELECT
         WHEN r_score <= 2 AND f_score <= 2 THEN 'Hibernating'
         ELSE 'Need Attention'
     END AS segment_label
-FROM scored;
+FROM scored
+RETURNING calculated_at;

@@ -55,8 +55,18 @@ async def get_segments_summary(db: AsyncSession = Depends(get_db)):
 @app.post("/rfm/recalculate", response_model=RecalculateOut)
 async def recalculate_rfm(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text(RFM_SQL))
-    rows_written = result.rowcount
-    run_at = datetime.datetime.utcnow()
+    inserted_rows = result.fetchall()
+    rows_written = len(inserted_rows)
+    run_at = inserted_rows[0].calculated_at if inserted_rows else datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+    distribution_result = await db.execute(
+        text(
+            "SELECT segment_label, count(*) AS customer_count "
+            "FROM segments WHERE calculated_at = :run_at GROUP BY segment_label"
+        ),
+        {"run_at": run_at},
+    )
+    segment_distribution = {row.segment_label: row.customer_count for row in distribution_result}
 
     await db.execute(
         text(
@@ -67,7 +77,10 @@ async def recalculate_rfm(db: AsyncSession = Depends(get_db)):
             "model_name": "rfm_ntile5",
             "run_at": run_at,
             "parameters": json.dumps({"ntile_buckets": 5}),
-            "metrics": json.dumps({"rows_written": rows_written}),
+            "metrics": json.dumps({
+                "customers_affected": rows_written,
+                "segment_distribution": segment_distribution,
+            }),
             "notes": "Manual recalculation via /rfm/recalculate endpoint",
         },
     )

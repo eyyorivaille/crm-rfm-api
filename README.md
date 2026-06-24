@@ -1,23 +1,41 @@
 # crm-rfm-api
 
-Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan ve sonuçları bir API üzerinden sunan proje.
+Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan ve sonuçları bir API üzerinden sunan proje. RFM skorları SQL (window function + `NTILE`) ile hesaplanır, sonuçlar PostgreSQL'e yazılır ve async FastAPI endpoint'leri üzerinden sunulur.
 
 ## Kullanılan Teknolojiler
 
 - PostgreSQL — veri tabanı
-- FastAPI — API katmanı
-- pandas / psycopg2 / SQLAlchemy — veri yükleme ve işleme
+- FastAPI + SQLAlchemy (async) + asyncpg — API katmanı
+- pandas / psycopg2 — başlangıç veri yükleme scripti
+- Docker Compose — API + veritabanını tek komutla ayağa kaldırma
+- pytest — endpoint testleri
 
 ## Veritabanı Şeması
 
 - `customers` — müşteri bilgileri
 - `transactions` — satış işlemleri
-- `segments` — hesaplanmış RFM skorları ve segment etiketleri
-- `model_logs` — model çalıştırma kayıtları
+- `segments` — hesaplanmış RFM skorları ve segment etiketleri (her recalculate çalıştırması geçmişe yeni satırlar ekler)
+- `model_logs` — her RFM hesaplama çalıştırmasının kaydı (zaman, parametreler, segment dağılımı)
 
-## Kurulum
+Şema tanımı: [`sql/schema.sql`](sql/schema.sql). RFM hesaplama sorgusu: [`sql/rfm_scoring.sql`](sql/rfm_scoring.sql).
 
-1. PostgreSQL'de `crm_db` veritabanını oluştur.
+## Kurulum — Docker Compose (önerilen)
+
+Tek komutla FastAPI + PostgreSQL ayağa kalkar:
+
+```
+docker compose up -d
+```
+
+- API: http://localhost:8000 (Swagger: http://localhost:8000/docs)
+- PostgreSQL container'ı ilk açılışta `sql/schema.sql`'i otomatik çalıştırır, tablolar hazır gelir.
+- Bu, **boş bir şema** ile başlar; gerçek Online Retail II verisini yüklemek için aşağıdaki "Veri yükleme" adımını host makinede `DB_HOST=localhost` ile çalıştırman gerekir (ya da `load_data.py`'yi container'a kopyalayıp çalıştırabilirsin).
+- Ortam değişkenleri proje kökündeki `.env` dosyasından okunur (aşağıdaki formatta).
+- Durdurmak için: `docker compose down` (veriyi de silmek istersen `-v` ekle).
+
+## Kurulum — Local (Docker'sız)
+
+1. PostgreSQL'de `crm_db` veritabanını oluştur, `sql/schema.sql`'i çalıştır.
 2. Proje kökünde aşağıdaki içerikle bir `.env` dosyası oluştur:
    ```
    DB_USER=postgres
@@ -35,10 +53,67 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
    ```
    python load_data.py
    ```
-6. API'yi başlat:
+6. RFM skorlarını hesapla (ilk kez): `sql/rfm_scoring.sql`'i pgAdmin'de çalıştır, ya da API ayaktayken `POST /rfm/recalculate` çağır.
+7. API'yi başlat:
    ```
    uvicorn main:app --reload
    ```
+
+## API Endpoint'leri
+
+### `GET /customers/{customer_id}/segment`
+
+Müşterinin en güncel RFM segmentini döndürür.
+
+```
+GET /customers/12636/segment
+```
+```json
+{
+  "customer_id": "12636",
+  "recency": 738,
+  "frequency": 1,
+  "monetary": "141.00",
+  "rfm_score": "111",
+  "segment_label": "Hibernating",
+  "calculated_at": "2026-06-24T16:21:30.159257"
+}
+```
+Müşteri yoksa veya hiç segmenti hesaplanmamışsa `404` döner.
+
+### `GET /segments/summary`
+
+Segment başına müşteri sayısı ve ortalama harcamayı döndürür (her müşterinin en güncel kaydı baz alınır).
+
+```
+GET /segments/summary
+```
+```json
+[
+  {"segment_label": "Hibernating", "customer_count": 1534, "avg_monetary": "361.65"},
+  {"segment_label": "Champion", "customer_count": 1292, "avg_monetary": "9373.90"}
+]
+```
+
+### `POST /rfm/recalculate`
+
+RFM hesaplamasını yeniden tetikler, `segments` tablosuna yeni bir geçmiş kaydı yazar ve `model_logs` tablosuna çalıştırma özetini (zaman, segment dağılımı, etkilenen müşteri sayısı) kaydeder.
+
+```
+POST /rfm/recalculate
+```
+```json
+{
+  "rows_written": 5878,
+  "run_at": "2026-06-24T16:42:58.128484"
+}
+```
+
+## Testler
+
+```
+pytest tests/ -v
+```
 
 ## Veri Kaynağı
 
