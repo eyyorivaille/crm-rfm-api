@@ -33,12 +33,14 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
    ```
    cp .env.example .env
    ```
-4. Tek komutla API + PostgreSQL'i ayağa kaldır:
+4. Tek komutla API + PostgreSQL + MLflow'u ayağa kaldır:
    ```
    docker compose up -d --build
    ```
-   - PostgreSQL container'ı ilk açılışta `sql/schema.sql`'i otomatik çalıştırır, tablolar hazır gelir.
+   - PostgreSQL container'ı ilk açılışta `sql/init_mlflow_db.sql` ve `sql/schema.sql`'i otomatik çalıştırır — `mlflow_db` ve uygulama tabloları hazır gelir.
    - API: http://localhost:8000 (Swagger: http://localhost:8000/docs)
+   - MLflow UI: http://localhost:5000
+   - Bu, **kendi başına taze bir MLflow registry'si** — host makinendeki (local) MLflow'da kayıtlı modellerden bağımsız. `GET /model/info` bu yüzden başlangıçta `404` döner (`production` alias'lı bir model henüz yok) — `data/` klasörü gibi, kullanılmadan önce doldurulması gereken boş bir ortam.
 5. Bu noktada veritabanı **boş** (sadece tablolar var). Gerçek Online Retail II verisini yüklemek için:
    - "Online Retail II" veri setini Kaggle'dan indir, proje kökündeki `data/online_retail_II.xlsx` olarak kaydet (bu klasör `docker-compose.yml` ile `api` container'ına otomatik mount edilir).
    - Container içinde yükleme scriptini çalıştır:
@@ -50,6 +52,8 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
      curl -X POST http://localhost:8000/rfm/recalculate
      ```
 6. Durdurmak için: `docker compose down` (veritabanı verisi `pgdata` volume'unda kalıcı kalır, silmek istersen `-v` ekle).
+
+**Not — `requirements.txt` vs `requirements-docker.txt`:** `requirements.txt`, geliştirme ortamının tamamını (`jupyter`, `matplotlib`, `scikit-learn` dahil — notebook'lar için) içerir. Docker imajı bunun yerine sadece API'nin çalışması için gereken minimal bağımlılıkları listeleyen `requirements-docker.txt`'i kullanır — hem imaj boyutunu küçültür hem de Windows'a özgü paketlerin (örn. `pywin32`) Linux container'ında build'i kırmasını önler.
 
 ## Kurulum — Local (Docker'sız)
 

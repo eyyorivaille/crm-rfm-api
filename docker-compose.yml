@@ -8,12 +8,34 @@ services:
       POSTGRES_DB: ${DB_NAME}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./sql/init_mlflow_db.sql:/docker-entrypoint-initdb.d/00_init_mlflow_db.sql
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    restart: unless-stopped
+    environment:
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlflow-artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "mlflow server
+      --backend-store-uri postgresql+psycopg2://$$DB_USER:$$DB_PASSWORD@db:5432/mlflow_db
+      --default-artifact-root /mlflow-artifacts
+      --host 0.0.0.0 --port 5000"
 
   api:
     build: .
@@ -24,6 +46,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
     ports:
       - "8000:8000"
     volumes:
@@ -31,6 +54,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mlflow:
+        condition: service_started
 
 volumes:
   pgdata:
+  mlflow_artifacts:
