@@ -39,3 +39,20 @@ CREATE TABLE model_logs (
 CREATE INDEX idx_transactions_customer_id ON transactions(customer_id);
 CREATE INDEX idx_transactions_invoice_date ON transactions(invoice_date);
 CREATE INDEX idx_transactions_invoice_stock ON transactions(invoice_id, stock_code);
+
+CREATE TABLE churn_predictions (
+    customer_id        VARCHAR(20) REFERENCES customers(customer_id) ON DELETE RESTRICT,
+    churn_probability  NUMERIC(6,5),
+    predicted_at       TIMESTAMP NOT NULL DEFAULT now(),
+    model_version      VARCHAR(100),
+    PRIMARY KEY (customer_id, predicted_at)
+);
+
+CREATE TABLE clv_predictions (
+    customer_id         VARCHAR(20) REFERENCES customers(customer_id) ON DELETE RESTRICT,
+    predicted_clv_6m    NUMERIC(14,2),
+    has_repeat_history  BOOLEAN,
+    predicted_at        TIMESTAMP NOT NULL DEFAULT now(),
+    model_version       VARCHAR(100),
+    PRIMARY KEY (customer_id, predicted_at)
+);

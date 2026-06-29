@@ -8,6 +8,8 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
 - FastAPI + SQLAlchemy (async) + asyncpg — API katmanı
 - pandas / psycopg2 — başlangıç veri yükleme scripti
 - scikit-learn — K-Means müşteri segmentasyonu
+- LightGBM + SHAP — churn (kayıp müşteri) tahmini ve model açıklanabilirliği
+- Lifetimes (BG/NBD + Gamma-Gamma) — müşteri yaşam boyu değeri (CLV) tahmini
 - MLflow (PostgreSQL backend) — deney takibi ve model registry
 - Docker Compose — API + veritabanını tek komutla ayağa kaldırma
 - pytest — endpoint testleri
@@ -18,8 +20,10 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
 - `transactions` — satış işlemleri
 - `segments` — hesaplanmış RFM skorları ve segment etiketleri (her recalculate çalıştırması geçmişe yeni satırlar ekler)
 - `model_logs` — her RFM hesaplama çalıştırmasının kaydı (zaman, parametreler, segment dağılımı)
+- `churn_predictions` — müşteri başına churn olasılığı (LightGBM)
+- `clv_predictions` — müşteri başına 6 aylık CLV tahmini (BG/NBD + Gamma-Gamma)
 
-Şema tanımı: [`sql/schema.sql`](sql/schema.sql). RFM hesaplama sorgusu: [`sql/rfm_scoring.sql`](sql/rfm_scoring.sql).
+Şema tanımı: [`sql/schema.sql`](sql/schema.sql). RFM hesaplama sorgusu: [`sql/rfm_scoring.sql`](sql/rfm_scoring.sql). Churn/CLV analizi: [`notebooks/churn_clv.ipynb`](notebooks/churn_clv.ipynb).
 
 ## Kurulum — Docker Compose (önerilen, başka bir bilgisayarda çalıştırmak için)
 
