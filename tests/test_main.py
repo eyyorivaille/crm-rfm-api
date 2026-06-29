@@ -40,3 +40,12 @@ def test_rfm_recalculate(client):
     assert response.status_code == 200
     body = response.json()
     assert body["rows_written"] > 0
+
+
+def test_model_info(client):
+    response = client.get("/model/info")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["model_name"] == "rfm-customer-segments"
+    assert body["stage"] == "Production"
+    assert "silhouette" in body["metrics"]

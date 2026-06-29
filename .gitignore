@@ -6,3 +6,5 @@ data/
 .pytest_cache/
 .claude/
 .ipynb_checkpoints/
+mlflow-artifacts/
+mlruns/

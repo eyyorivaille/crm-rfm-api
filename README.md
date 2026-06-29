@@ -7,6 +7,8 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
 - PostgreSQL — veri tabanı
 - FastAPI + SQLAlchemy (async) + asyncpg — API katmanı
 - pandas / psycopg2 — başlangıç veri yükleme scripti
+- scikit-learn — K-Means müşteri segmentasyonu
+- MLflow (PostgreSQL backend) — deney takibi ve model registry
 - Docker Compose — API + veritabanını tek komutla ayağa kaldırma
 - pytest — endpoint testleri
 
@@ -75,6 +77,17 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
    uvicorn main:app --reload
    ```
 
+## Kurulum — MLflow (deney takibi ve model registry)
+
+1. MLflow için ayrı bir veritabanı oluştur (uygulama verisiyle karışmasın): `CREATE DATABASE mlflow_db;`
+2. `.env`'e ekle: `MLFLOW_TRACKING_URI=http://127.0.0.1:5000`
+3. Tracking server'ı başlat:
+   ```
+   mlflow server --backend-store-uri postgresql+psycopg2://USER:PASS@localhost:5432/mlflow_db --default-artifact-root ./mlflow-artifacts --host 127.0.0.1 --port 5000
+   ```
+4. UI: http://127.0.0.1:5000
+5. Segmentasyon deneylerini çalıştır: `notebooks/mlflow_experiments.ipynb` — K=2..10 için run'lar loglar, en iyi modeli (K=5) Model Registry'ye `production` alias'ı ve `stage=Production` tag'iyle kaydeder, segment profilini (CSV) ve elbow grafiğini (PNG) artifact olarak ekler.
+
 ## API Endpoint'leri
 
 ### `GET /customers/{customer_id}/segment`
@@ -124,6 +137,25 @@ POST /rfm/recalculate
   "run_at": "2026-06-24T16:42:58.128484"
 }
 ```
+
+### `GET /model/info`
+
+Production'a alınmış (MLflow Model Registry'de `production` alias'lı) K-Means segmentasyon modelinin versiyonunu ve metriklerini döndürür.
+
+```
+GET /model/info
+```
+```json
+{
+  "model_name": "rfm-customer-segments",
+  "version": "2",
+  "stage": "Production",
+  "run_id": "581c2f089b844c99862b2c3d6f40342f",
+  "metrics": {"inertia": 3910.19, "silhouette": 0.600},
+  "params": {"k": "5"}
+}
+```
+`production` alias'lı bir model yoksa `404` döner.
 
 ## Testler
 

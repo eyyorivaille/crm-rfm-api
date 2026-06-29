@@ -25,3 +25,12 @@ class SegmentSummaryOut(BaseModel):
 class RecalculateOut(BaseModel):
     rows_written: int
     run_at: datetime.datetime
+
+
+class ModelInfoOut(BaseModel):
+    model_name: str
+    version: str
+    stage: str | None
+    run_id: str
+    metrics: dict[str, float]
+    params: dict[str, str]

@@ -1,18 +1,26 @@
 import datetime
 import json
+import os
 from pathlib import Path
 
+import mlflow
 from fastapi import Depends, FastAPI, HTTPException
+from mlflow.exceptions import MlflowException
+from mlflow.tracking import MlflowClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
 from models import Segment
-from schemas import RecalculateOut, SegmentOut, SegmentSummaryOut
+from schemas import ModelInfoOut, RecalculateOut, SegmentOut, SegmentSummaryOut
 
 app = FastAPI()
 
 RFM_SQL = (Path(__file__).parent / "sql" / "rfm_scoring.sql").read_text()
+
+MLFLOW_MODEL_NAME = "rfm-customer-segments"
+mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+mlflow_client = MlflowClient()
 
 
 @app.get("/")
@@ -86,3 +94,21 @@ async def recalculate_rfm(db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
     return RecalculateOut(rows_written=rows_written, run_at=run_at)
+
+
+@app.get("/model/info", response_model=ModelInfoOut)
+def get_model_info():
+    try:
+        mv = mlflow_client.get_model_version_by_alias(MLFLOW_MODEL_NAME, "production")
+    except MlflowException:
+        raise HTTPException(status_code=404, detail="No model registered with the 'production' alias")
+
+    run = mlflow_client.get_run(mv.run_id)
+    return ModelInfoOut(
+        model_name=MLFLOW_MODEL_NAME,
+        version=mv.version,
+        stage=mv.tags.get("stage"),
+        run_id=mv.run_id,
+        metrics=run.data.metrics,
+        params=run.data.params,
+    )
