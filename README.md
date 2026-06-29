@@ -11,17 +11,33 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
 - LightGBM + SHAP — churn (kayıp müşteri) tahmini ve model açıklanabilirliği
 - Lifetimes (BG/NBD + Gamma-Gamma) — müşteri yaşam boyu değeri (CLV) tahmini
 - MLflow (PostgreSQL backend) — deney takibi ve model registry
+- Apache Airflow — haftalık RFM → segmentasyon → churn → CLV pipeline orkestrasyonu
 - Docker Compose — API + veritabanını tek komutla ayağa kaldırma
 - pytest — endpoint testleri
 
 ## Veritabanı Şeması
 
+`crm_db` (iş verisi):
 - `customers` — müşteri bilgileri
 - `transactions` — satış işlemleri
 - `segments` — hesaplanmış RFM skorları ve segment etiketleri (her recalculate çalıştırması geçmişe yeni satırlar ekler)
 - `model_logs` — her RFM hesaplama çalıştırmasının kaydı (zaman, parametreler, segment dağılımı)
 - `churn_predictions` — müşteri başına churn olasılığı (LightGBM)
 - `clv_predictions` — müşteri başına 6 aylık CLV tahmini (BG/NBD + Gamma-Gamma)
+
+`crm_logs_db` (iş verisinden ayrı, pipeline/orkestrasyon logları):
+- `pipeline_runs` — her Airflow DAG adımının başlangıç/bitiş zamanı, etkilenen müşteri sayısı, başarı/hata durumu
+
+## Pipeline Modülleri (`pipeline/`)
+
+Notebook'larda geliştirilen mantığın, Airflow'un haftalık olarak çağırabileceği senkron Python fonksiyonlarına çıkarılmış hali:
+
+- `pipeline/rfm.py` — RFM yeniden hesaplama
+- `pipeline/segmentation.py` — K-Means segmentasyonu (Production'a **otomatik terfi yok** — silhouette skoru kümeleme için yanıltıcı olabildiğinden, terfi kararı MLflow UI'dan elle verilir)
+- `pipeline/churn.py` — LightGBM churn modeli (metrik-kapılı otomatik terfi)
+- `pipeline/clv.py` — BG/NBD + Gamma-Gamma CLV modeli (metrik-kapılı otomatik terfi)
+- `pipeline/mlflow_utils.py` — `promote_if_better()`: yeni model versiyonunu mevcut Production ile karşılaştırıp sadece gerçekten daha iyiyse terfi ettirir
+- `pipeline/run_logger.py` — her adımın `pipeline_runs` tablosuna başarı/hata kaydı düşmesini sağlar
 
 Şema tanımı: [`sql/schema.sql`](sql/schema.sql). RFM hesaplama sorgusu: [`sql/rfm_scoring.sql`](sql/rfm_scoring.sql). Churn/CLV analizi: [`notebooks/churn_clv.ipynb`](notebooks/churn_clv.ipynb).
 

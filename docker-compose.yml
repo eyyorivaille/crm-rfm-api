@@ -10,6 +10,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./sql/init_mlflow_db.sql:/docker-entrypoint-initdb.d/00_init_mlflow_db.sql
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./sql/init_logs_db.sql:/docker-entrypoint-initdb.d/02_init_logs_db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -46,6 +47,7 @@ services:
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME}
+      LOGS_DB_NAME: ${LOGS_DB_NAME}
       MLFLOW_TRACKING_URI: http://mlflow:5000
     ports:
       - "8000:8000"
