@@ -53,14 +53,16 @@ Notebook'larda geliştirilen mantığın, Airflow'un haftalık olarak çağırab
    ```
    cp .env.example .env
    ```
-4. Tek komutla API + PostgreSQL + MLflow'u ayağa kaldır:
+4. Tek komutla tüm servisleri ayağa kaldır:
    ```
    docker compose up -d --build
    ```
-   - PostgreSQL container'ı ilk açılışta `sql/init_mlflow_db.sql` ve `sql/schema.sql`'i otomatik çalıştırır — `mlflow_db` ve uygulama tabloları hazır gelir.
+   - PostgreSQL container'ı ilk açılışta `sql/init_mlflow_db.sql`, `sql/schema.sql`, `sql/init_logs_db.sql` ve `sql/init_airflow_db.sql`'i otomatik çalıştırır — `crm_db`, `mlflow_db`, `crm_logs_db`, `airflow_meta` ve uygulama tabloları hazır gelir.
    - API: http://localhost:8000 (Swagger: http://localhost:8000/docs)
    - MLflow UI: http://localhost:5000
+   - Airflow UI: http://localhost:8080 (kullanıcı: `admin`, şifre: `admin` — `airflow-init` servisi tarafından otomatik oluşturulur)
    - Bu, **kendi başına taze bir MLflow registry'si** — host makinendeki (local) MLflow'da kayıtlı modellerden bağımsız. `GET /model/info` bu yüzden başlangıçta `404` döner (`production` alias'lı bir model henüz yok) — `data/` klasörü gibi, kullanılmadan önce doldurulması gereken boş bir ortam.
+   - **Airflow'un ilk açılışı yavaş olabilir** — `airflow-init`/`airflow-webserver`/`airflow-scheduler` build edilirken `requirements-airflow.txt`'teki paketler (lightgbm, lifetimes, mlflow, scikit-learn) image'a kuruluyor.
 5. Bu noktada veritabanı **boş** (sadece tablolar var). Gerçek Online Retail II verisini yüklemek için:
    - "Online Retail II" veri setini Kaggle'dan indir, proje kökündeki `data/online_retail_II.xlsx` olarak kaydet (bu klasör `docker-compose.yml` ile `api` container'ına otomatik mount edilir).
    - Container içinde yükleme scriptini çalıştır:
@@ -71,9 +73,23 @@ Notebook'larda geliştirilen mantığın, Airflow'un haftalık olarak çağırab
      ```
      curl -X POST http://localhost:8000/rfm/recalculate
      ```
+   - Haftalık pipeline'ı manuel tetiklemek için (Airflow UI'dan da yapılabilir):
+     ```
+     docker compose exec airflow-scheduler airflow dags unpause weekly_rfm_churn_clv_pipeline
+     docker compose exec airflow-scheduler airflow dags trigger weekly_rfm_churn_clv_pipeline
+     ```
 6. Durdurmak için: `docker compose down` (veritabanı verisi `pgdata` volume'unda kalıcı kalır, silmek istersen `-v` ekle).
 
-**Not — `requirements.txt` vs `requirements-docker.txt`:** `requirements.txt`, geliştirme ortamının tamamını (`jupyter`, `matplotlib`, `scikit-learn` dahil — notebook'lar için) içerir. Docker imajı bunun yerine sadece API'nin çalışması için gereken minimal bağımlılıkları listeleyen `requirements-docker.txt`'i kullanır — hem imaj boyutunu küçültür hem de Windows'a özgü paketlerin (örn. `pywin32`) Linux container'ında build'i kırmasını önler.
+**Not — `requirements.txt` vs `requirements-docker.txt` vs `requirements-airflow.txt`:** `requirements.txt`, geliştirme ortamının tamamını (`jupyter`, `matplotlib`, `scikit-learn` dahil — notebook'lar için) içerir. `api` container'ı sadece API'nin çalışması için gereken minimal bağımlılıkları listeleyen `requirements-docker.txt`'i kullanır. `airflow-*` container'ları ise `requirements-airflow.txt` + `Dockerfile.airflow` (resmi `apache/airflow` image'ını LightGBM'in ihtiyaç duyduğu `libgomp1` sistem kütüphanesiyle genişletir) kullanır — Airflow'un kendi `SQLAlchemy<2.0` bağımlılığını bozmamak için `requirements-airflow.txt`'te SQLAlchemy/pandas bilerek sabitlenmemiştir.
+
+## Airflow Pipeline (`weekly_rfm_churn_clv_pipeline`)
+
+Haftalık olarak (varsayılan `@weekly`) sırayla şu adımları çalıştırır: **RFM yeniden hesaplama → K-Means segmentasyonu → LightGBM churn → BG/NBD+Gamma-Gamma CLV**. Adımlar birbirine bağımlıdır (`>>`) — biri başarısız olursa sonrakiler hiç çalışmaz (`upstream_failed`), bu da "bir adım başarısız olursa pipeline durmalı" gereksinimini Airflow'un varsayılan davranışıyla, ekstra kod gerektirmeden sağlar.
+
+- DAG dosyası: [`dags/weekly_pipeline.py`](dags/weekly_pipeline.py)
+- Her adımın başlangıç/bitiş zamanı, etkilenen müşteri sayısı ve başarı/hata durumu `crm_logs_db.pipeline_runs`'a yazılır ([`pipeline/run_logger.py`](pipeline/run_logger.py))
+- Segmentasyon adımı **Production'a otomatik terfi etmez** (silhouette skoru kümeleme için yanıltıcı olabildiğinden) — yeni versiyon `Candidate` olarak kaydedilir, MLflow UI'dan elle onaylanması gerekir
+- Churn ve CLV adımları metrik-kapılı otomatik terfi kullanır (`pipeline/mlflow_utils.py`)
 
 ## Kurulum — Local (Docker'sız)
 
@@ -85,7 +101,9 @@ Notebook'larda geliştirilen mantığın, Airflow'un haftalık olarak çağırab
    DB_HOST=localhost
    DB_PORT=5432
    DB_NAME=crm_db
+   LOGS_DB_NAME=crm_logs_db
    ```
+   `crm_logs_db`'yi de oluştur (`sql/init_logs_db.sql`'i çalıştır) — `pipeline_runs` tablosu burada yaşar.
 3. Bağımlılıkları kur:
    ```
    pip install -r requirements.txt
@@ -182,6 +200,26 @@ GET /model/info
 }
 ```
 `production` alias'lı bir model yoksa `404` döner.
+
+### `GET /pipeline/status`
+
+En son Airflow DAG çalıştırmasının (`weekly_rfm_churn_clv_pipeline`) adım adım durumunu `crm_logs_db.pipeline_runs`'tan döndürür.
+
+```
+GET /pipeline/status
+```
+```json
+{
+  "dag_run_id": "manual__2026-06-29T19:55:48+00:00",
+  "steps": [
+    {"step_name": "rfm", "started_at": "2026-06-29T19:55:51.189874", "finished_at": "2026-06-29T19:55:52.201868", "customers_affected": 5878, "status": "success", "error_message": null},
+    {"step_name": "segmentation", "started_at": "2026-06-29T19:55:55.208207", "finished_at": "2026-06-29T19:56:10.150122", "customers_affected": 5878, "status": "success", "error_message": null},
+    {"step_name": "churn", "started_at": "2026-06-29T19:56:13.857905", "finished_at": "2026-06-29T19:56:28.751155", "customers_affected": 5281, "status": "success", "error_message": null},
+    {"step_name": "clv", "started_at": "2026-06-29T19:56:31.554582", "finished_at": "2026-06-29T19:56:38.715761", "customers_affected": 5878, "status": "success", "error_message": null}
+  ]
+}
+```
+Hiç pipeline çalıştırması loglanmamışsa `404` döner.
 
 ## Testler
 

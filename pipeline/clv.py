@@ -53,7 +53,8 @@ class CLVModel(mlflow.pyfunc.PythonModel):
 
 def run_clv_training():
     engine = get_engine()
-    invoices = pd.read_sql(INVOICE_QUERY, engine)
+    with engine.connect() as conn:
+        invoices = pd.read_sql(INVOICE_QUERY, conn)
     max_date = invoices["invoice_date"].max()
 
     calibration_end = max_date - pd.Timedelta(days=HOLDOUT_DAYS)

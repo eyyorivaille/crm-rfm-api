@@ -63,7 +63,8 @@ GROUP BY p.customer_id, c.country, b.cutoff_date, pca.customer_id
 
 def run_churn_training():
     engine = get_engine()
-    df = pd.read_sql(FEATURE_QUERY, engine)
+    with engine.connect() as conn:
+        df = pd.read_sql(FEATURE_QUERY, conn)
     df = df.set_index("customer_id")
 
     X = df.drop(columns=["churn"]).copy()

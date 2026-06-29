@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from db import engine
+from logs_db import logs_engine
 from main import app
 
 
@@ -12,6 +13,7 @@ def client():
     with TestClient(app) as c:
         yield c
     asyncio.run(engine.dispose())
+    asyncio.run(logs_engine.dispose())
 
 
 def test_get_customer_segment_found(client):
@@ -49,3 +51,12 @@ def test_model_info(client):
     assert body["model_name"] == "rfm-customer-segments"
     assert body["stage"] == "Production"
     assert "silhouette" in body["metrics"]
+
+
+def test_pipeline_status(client):
+    response = client.get("/pipeline/status")
+    assert response.status_code == 200
+    body = response.json()
+    assert "dag_run_id" in body
+    assert len(body["steps"]) > 0
+    assert {"step_name", "started_at", "status"} <= body["steps"][0].keys()

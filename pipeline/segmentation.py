@@ -35,7 +35,8 @@ RFM_QUERY = """
 
 def run_segmentation():
     engine = get_engine()
-    rfm = pd.read_sql(RFM_QUERY, engine).set_index("customer_id")
+    with engine.connect() as conn:
+        rfm = pd.read_sql(RFM_QUERY, conn).set_index("customer_id")
 
     pipeline = Pipeline([
         ("log_transform", ColumnTransformer(

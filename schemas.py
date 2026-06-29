@@ -34,3 +34,17 @@ class ModelInfoOut(BaseModel):
     run_id: str
     metrics: dict[str, float]
     params: dict[str, str]
+
+
+class PipelineStepOut(BaseModel):
+    step_name: str
+    started_at: datetime.datetime
+    finished_at: datetime.datetime | None
+    customers_affected: int | None
+    status: str
+    error_message: str | None
+
+
+class PipelineStatusOut(BaseModel):
+    dag_run_id: str
+    steps: list[PipelineStepOut]

@@ -11,8 +11,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_db
+from logs_db import get_logs_db
 from models import Segment
-from schemas import ModelInfoOut, RecalculateOut, SegmentOut, SegmentSummaryOut
+from schemas import ModelInfoOut, PipelineStatusOut, PipelineStepOut, RecalculateOut, SegmentOut, SegmentSummaryOut
 
 app = FastAPI()
 
@@ -94,6 +95,28 @@ async def recalculate_rfm(db: AsyncSession = Depends(get_db)):
     )
     await db.commit()
     return RecalculateOut(rows_written=rows_written, run_at=run_at)
+
+
+@app.get("/pipeline/status", response_model=PipelineStatusOut)
+async def get_pipeline_status(logs_db: AsyncSession = Depends(get_logs_db)):
+    sql = text("""
+        WITH latest_run AS (
+            SELECT dag_run_id FROM pipeline_runs ORDER BY started_at DESC LIMIT 1
+        )
+        SELECT dag_run_id, step_name, started_at, finished_at, customers_affected, status, error_message
+        FROM pipeline_runs
+        WHERE dag_run_id = (SELECT dag_run_id FROM latest_run)
+        ORDER BY started_at ASC
+    """)
+    result = await logs_db.execute(sql)
+    rows = result.fetchall()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No pipeline runs logged yet")
+
+    return PipelineStatusOut(
+        dag_run_id=rows[0].dag_run_id,
+        steps=[PipelineStepOut(**row._mapping) for row in rows],
+    )
 
 
 @app.get("/model/info", response_model=ModelInfoOut)

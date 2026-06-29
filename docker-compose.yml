@@ -1,3 +1,29 @@
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${DB_USER}:${DB_PASSWORD}@db:5432/airflow_meta
+    DB_USER: ${DB_USER}
+    DB_PASSWORD: ${DB_PASSWORD}
+    DB_HOST: db
+    DB_PORT: 5432
+    DB_NAME: ${DB_NAME}
+    LOGS_DB_NAME: ${LOGS_DB_NAME}
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    PYTHONPATH: /opt/airflow
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./pipeline:/opt/airflow/pipeline
+    - ./sql:/opt/airflow/sql:ro
+    - airflow_logs:/opt/airflow/logs
+    - mlflow_artifacts:/mlflow-artifacts
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:16
@@ -11,6 +37,7 @@ services:
       - ./sql/init_mlflow_db.sql:/docker-entrypoint-initdb.d/00_init_mlflow_db.sql
       - ./sql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
       - ./sql/init_logs_db.sql:/docker-entrypoint-initdb.d/02_init_logs_db.sql
+      - ./sql/init_airflow_db.sql:/docker-entrypoint-initdb.d/03_init_airflow_db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -25,6 +52,7 @@ services:
     environment:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      MLFLOW_SERVER_ALLOWED_HOSTS: "*"
     ports:
       - "5000:5000"
     volumes:
@@ -33,7 +61,8 @@ services:
       db:
         condition: service_healthy
     command: >
-      sh -c "mlflow server
+      sh -c "chmod 775 /mlflow-artifacts &&
+      mlflow server
       --backend-store-uri postgresql+psycopg2://$$DB_USER:$$DB_PASSWORD@db:5432/mlflow_db
       --default-artifact-root /mlflow-artifacts
       --host 0.0.0.0 --port 5000"
@@ -59,6 +88,37 @@ services:
       mlflow:
         condition: service_started
 
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command: >
+      -c "airflow db migrate &&
+      airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
 volumes:
   pgdata:
   mlflow_artifacts:
+  airflow_logs:
