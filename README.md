@@ -86,7 +86,9 @@ Müşteri segmentasyonu için RFM (Recency, Frequency, Monetary) analizi yapan v
    mlflow server --backend-store-uri postgresql+psycopg2://USER:PASS@localhost:5432/mlflow_db --default-artifact-root ./mlflow-artifacts --host 127.0.0.1 --port 5000
    ```
 4. UI: http://127.0.0.1:5000
-5. Segmentasyon deneylerini çalıştır: `notebooks/mlflow_experiments.ipynb` — K=2..10 için run'lar loglar, en iyi modeli (K=5) Model Registry'ye `production` alias'ı ve `stage=Production` tag'iyle kaydeder, segment profilini (CSV) ve elbow grafiğini (PNG) artifact olarak ekler.
+5. Segmentasyon deneylerini çalıştır:
+   - `notebooks/mlflow_experiments.ipynb` — K=2..10 için run'lar loglar, ilk modeli (K=5, ölçeklenmiş ama log dönüşümsüz) Model Registry'ye kaydeder.
+   - `notebooks/mini_proje2.ipynb` — **Mini Proje 2**: baseline (ham veri, K=3) → log dönüşümü → PCA görselleştirme → final model (log dönüşümü + K=5) yolculuğunu belgeler, registry'de en güncel "Production" versiyonu bu notebook'tan çıkar, eski versiyonlar `Archived` olur.
 
 ## API Endpoint'leri
 
@@ -148,11 +150,11 @@ GET /model/info
 ```json
 {
   "model_name": "rfm-customer-segments",
-  "version": "2",
+  "version": "3",
   "stage": "Production",
-  "run_id": "581c2f089b844c99862b2c3d6f40342f",
-  "metrics": {"inertia": 3910.19, "silhouette": 0.600},
-  "params": {"k": "5"}
+  "run_id": "c9ef6f722a5741bda6bbba4bf57222ee",
+  "metrics": {"silhouette": 0.367, "inertia": 3621.25},
+  "params": {"k": "5", "preprocessing": "log1p(frequency,monetary) + StandardScaler"}
 }
 ```
 `production` alias'lı bir model yoksa `404` döner.
